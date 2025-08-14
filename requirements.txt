@@ -1,0 +1,5 @@
+huggingface_hub
+gradio==5.42.0
+openai==1.99.9
+python-dotenv
+pinecone==7.3.0
