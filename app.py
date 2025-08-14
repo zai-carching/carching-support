@@ -8,80 +8,118 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv(verbose=True)
 
+# Configuration
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = "whatsapp-history-1"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+INDEX_NAME = "web-data"  # Updated index name
 EMBED_MODEL = "text-embedding-3-small"
-TOP_K = 5
+CHAT_MODEL = "gpt-3.5-turbo"  # Updated to valid model
+TOP_K = 3  # Reduced for better relevance
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc.Index(INDEX_NAME)
+# Initialize clients
+try:
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    index = pc.Index(INDEX_NAME)
+except Exception as e:
+    st.error(f"Failed to initialize services: {str(e)}")
+    st.stop()
+
 
 # Function to retrieve relevant context from Pinecone
 def retrieve_context(query):
-    response = client.embeddings.create(
-        model=EMBED_MODEL,
-        input=query
-    )
-    query_emb = response.data[0].embedding
+    try:
+        # Get embedding for the query
+        response = client.embeddings.create(
+            model=EMBED_MODEL,
+            input=query
+        )
+        query_emb = response.data[0].embedding
 
-    result = index.query(vector=query_emb, top_k=TOP_K, include_metadata=True)
+        # Query Pinecone
+        result = index.query(
+            vector=query_emb,
+            top_k=TOP_K,
+            include_metadata=True
+        )
 
-    contexts = []
-    for match in result.matches:
-        meta = match.metadata
-        contexts.append(f"{meta['sender']}: {meta['message']}")
+        # Format context from matches
+        contexts = []
+        for match in result.matches:
+            meta = match.metadata
+            # Updated to match your website/FAQ data structure
+            context_str = f"Title: {meta['title']}\nContent: {meta['content']}"
+            contexts.append(context_str)
 
-    return "\n".join(contexts)
+        return "\n\n".join(contexts)
+    except Exception as e:
+        st.warning(f"Couldn't retrieve context: {str(e)}")
+        return ""
+
 
 # Function to get chatbot response
 def respond(message, chat_history):
-    context = retrieve_context(message)
+    try:
+        context = retrieve_context(message)
 
-    system_prompt = (
-        "You are a helpful assistant for carching. Use the following past conversation data on whatsapp "
-        "to answer the user's question if relevant:\n\n" + context
-    )
+        system_prompt = """You are a helpful customer support assistant for Carching. 
+        Use the following information to answer the user's question. If you don't know the answer, say you'll find out.
 
-    messages = [{"role": "system", "content": system_prompt}]
-    messages.extend(chat_history)
-    messages.append({"role": "user", "content": message})
+        Relevant Information:
+        {context}""".format(context=context)
 
-    response = client.chat.completions.create(
-        model="gpt-5-mini",
-        messages=messages
-    )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            *chat_history,
+            {"role": "user", "content": message}
+        ]
 
-    bot_reply = response.choices[0].message.content
+        response = client.chat.completions.create(
+            model=CHAT_MODEL,
+            messages=messages,
+            temperature=0.7
+        )
 
-    chat_history.append({"role": "user", "content": message})
-    chat_history.append({"role": "assistant", "content": bot_reply})
+        bot_reply = response.choices[0].message.content
 
-    return chat_history
+        # Update chat history (keeping last 6 exchanges)
+        updated_history = chat_history[-4:] + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": bot_reply}
+        ]
+
+        return updated_history
+    except Exception as e:
+        st.error(f"Error generating response: {str(e)}")
+        return chat_history + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": "Sorry, I encountered an error. Please try again."}
+        ]
+
 
 # Streamlit UI
-st.set_page_config(page_title="Customer Support Chatbot", page_icon="💬")
+st.set_page_config(page_title="Carching Support", page_icon="🚗")
 
-st.title("💬 Customer Support Chatbot")
+st.title("🚗 Carching Customer Support")
 
 # Initialize chat history
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-# Display past messages
+# Display chat messages
 for msg in st.session_state.chat_history:
-    if msg["role"] == "user":
-        st.chat_message("user").markdown(msg["content"])
-    else:
-        st.chat_message("assistant").markdown(msg["content"])
+    st.chat_message(msg["role"]).markdown(msg["content"])
 
 # Chat input
-if prompt := st.chat_input("Ask a question..."):
+if prompt := st.chat_input("Ask about Carching..."):
     # Display user message
     st.chat_message("user").markdown(prompt)
 
-    # Get response
-    st.session_state.chat_history = respond(prompt, st.session_state.chat_history)
+    # Get and display assistant response
+    with st.spinner("Thinking..."):
+        st.session_state.chat_history = respond(
+            prompt,
+            st.session_state.chat_history
+        )
 
-    # Display assistant response
     st.chat_message("assistant").markdown(st.session_state.chat_history[-1]["content"])
