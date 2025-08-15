@@ -13,7 +13,7 @@ PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 INDEX_NAME = "web-data"  # Updated index name
 EMBED_MODEL = "text-embedding-3-small"
-CHAT_MODEL = "gpt-3.5-turbo"  # Updated to valid model
+CHAT_MODEL = "gpt-3.5-turbo"
 TOP_K = 3  # Reduced for better relevance
 
 # Initialize clients
@@ -64,6 +64,9 @@ def respond(message, chat_history):
 
         system_prompt = """You are a helpful customer support assistant for Carching. 
         Use the following information to answer the user's question. If you don't know the answer, say you'll find out.
+        
+        1) if question starts in full english, you must sound like a normal customer service would
+        2) if question starts with Bahasa Malaysia or Malay or even broken shortform of the language, you must sound like a mass market colloquial Malay that have the flexibility to speak in short forms as well. in short explain in style of borak warung. 
 
         Relevant Information:
         {context}""".format(context=context)
@@ -77,7 +80,7 @@ def respond(message, chat_history):
         response = client.chat.completions.create(
             model=CHAT_MODEL,
             messages=messages,
-            temperature=0.7
+            # temperature=0.7
         )
 
         bot_reply = response.choices[0].message.content
