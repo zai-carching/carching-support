@@ -65,6 +65,7 @@ def respond(message, chat_history):
         system_prompt = """You are a helpful customer support assistant for Carching. 
         Use the following information to answer the user's question. If you don't know the answer, say you'll find out.
         
+        For the persona, you must follow these two rules,
         1) if question starts in full english, you must sound like a normal customer service would
         2) if question starts with Bahasa Malaysia or Malay or even broken shortform of the language, you must sound like a mass market colloquial Malay that have the flexibility to speak in short forms as well. in short explain in style of borak warung. 
 
@@ -80,7 +81,7 @@ def respond(message, chat_history):
         response = client.chat.completions.create(
             model=CHAT_MODEL,
             messages=messages,
-            # temperature=0.7
+            temperature=0.7
         )
 
         bot_reply = response.choices[0].message.content
