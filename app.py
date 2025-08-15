@@ -5,15 +5,17 @@ from openai import OpenAI
 from pinecone import Pinecone
 from dotenv import load_dotenv
 
+# ✅ Must be first Streamlit call
+st.set_page_config(page_title="Carching Support", page_icon="🚗")
+
 # Load environment variables
 load_dotenv(verbose=True)
 
 # Configuration
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-INDEX_NAME = "web-data"  # Updated index name
+INDEX_NAME = "web-data"
 EMBED_MODEL = "text-embedding-3-small"
-CHAT_MODEL = "gpt-3.5-turbo"
 TOP_K = 3  # Reduced for better relevance
 
 # Initialize clients
@@ -25,29 +27,43 @@ except Exception as e:
     st.error(f"Failed to initialize services: {str(e)}")
     st.stop()
 
+# Sidebar for settings
+st.sidebar.header("⚙️ Settings")
+
+# Editable system prompt
+default_prompt = """You are a helpful customer support assistant for Carching. 
+Use the following information to answer the user's question. If you don't know the answer, say you'll find out.
+
+If you're being asked in English, you can continue normally but if you're being asked in Bahasa Malaysia or Malay or even broken shortform of the malay language, you must sound like a mass market colloquial Malay that have the flexibility to speak in short forms as well. in short explain in style of borak warung.
+
+Relevant Information:
+{context}"""
+system_prompt_template = st.sidebar.text_area("📝 System Prompt", value=default_prompt, height=250)
+
+# Model selector
+model_choice = st.sidebar.selectbox(
+    "🤖 Select Model",
+    ["gpt-3.5-turbo", "gpt-4o-mini", "gpt-4o", "gpt-4-turbo","gpt-5-mini"]
+)
 
 # Function to retrieve relevant context from Pinecone
 def retrieve_context(query):
     try:
-        # Get embedding for the query
         response = client.embeddings.create(
             model=EMBED_MODEL,
             input=query
         )
         query_emb = response.data[0].embedding
 
-        # Query Pinecone
         result = index.query(
             vector=query_emb,
             top_k=TOP_K,
             include_metadata=True
         )
 
-        # Format context from matches
         contexts = []
         for match in result.matches:
             meta = match.metadata
-            # Updated to match your website/FAQ data structure
             context_str = f"Title: {meta['title']}\nContent: {meta['content']}"
             contexts.append(context_str)
 
@@ -56,21 +72,11 @@ def retrieve_context(query):
         st.warning(f"Couldn't retrieve context: {str(e)}")
         return ""
 
-
 # Function to get chatbot response
 def respond(message, chat_history):
     try:
         context = retrieve_context(message)
-
-        system_prompt = """You are a helpful customer support assistant for Carching. 
-        Use the following information to answer the user's question. If you don't know the answer, say you'll find out.
-        
-        For the persona, you must follow these two rules,
-        1) if question starts in full english, you must sound like a normal customer service would
-        2) if question starts with Bahasa Malaysia or Malay or even broken shortform of the language, you must sound like a mass market colloquial Malay that have the flexibility to speak in short forms as well. in short explain in style of borak warung. 
-
-        Relevant Information:
-        {context}""".format(context=context)
+        system_prompt = system_prompt_template.format(context=context)
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -79,14 +85,13 @@ def respond(message, chat_history):
         ]
 
         response = client.chat.completions.create(
-            model=CHAT_MODEL,
+            model=model_choice,
             messages=messages,
             temperature=0.7
         )
 
         bot_reply = response.choices[0].message.content
 
-        # Update chat history (keeping last 6 exchanges)
         updated_history = chat_history[-4:] + [
             {"role": "user", "content": message},
             {"role": "assistant", "content": bot_reply}
@@ -100,10 +105,7 @@ def respond(message, chat_history):
             {"role": "assistant", "content": "Sorry, I encountered an error. Please try again."}
         ]
 
-
-# Streamlit UI
-st.set_page_config(page_title="Carching Support", page_icon="🚗")
-
+# App Title
 st.title("🚗 Carching Customer Support")
 
 # Initialize chat history
@@ -116,10 +118,8 @@ for msg in st.session_state.chat_history:
 
 # Chat input
 if prompt := st.chat_input("Ask about Carching..."):
-    # Display user message
     st.chat_message("user").markdown(prompt)
 
-    # Get and display assistant response
     with st.spinner("Thinking..."):
         st.session_state.chat_history = respond(
             prompt,
