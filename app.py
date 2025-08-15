@@ -46,6 +46,11 @@ model_choice = st.sidebar.selectbox(
     ["gpt-3.5-turbo", "gpt-4o-mini", "gpt-4o", "gpt-4-turbo","gpt-5-mini"]
 )
 
+if st.sidebar.button("🗑️ Clear Chat"):
+    st.session_state.chat_history = []
+    st.experimental_rerun()
+
+
 # Function to retrieve relevant context from Pinecone
 def retrieve_context(query):
     try:
